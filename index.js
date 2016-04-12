@@ -1,11 +1,32 @@
 var express = require("express");
 var parser  = require("body-parser");
 var hbs     = require("express-handlebars");
+var session = require("express-session");
+var cmongo  = require("connect-mongo");
+var request = require("request");
+var qstring = require("qs")
+var env     = require("./env");
 var mongoose= require("./db/connection");
 
 var app     = express();
+var Smongo  = cmongo(session);
 
 var Candidate = mongoose.model("Candidate");
+
+process.env.session_secret = env.session_secret;
+process.env.t_callback_url = env.t_callback_url;
+process.env.t_consumer_key = env.t_consumer_key;
+process.env.t_consumer_secret = env.t_consumer_secret;
+
+app.use(session({
+  secret: process.env.session_secret,
+  resave: false,
+  saveUninitialized: false,
+  store: new Smongo({
+    mongooseConnection: mongoose.connection
+  })
+}));
+// boilerplate session code
 
 app.set("port", process.env.PORT || 3001);
 app.set("view engine", "hbs");
@@ -21,6 +42,44 @@ app.use(parser.urlencoded({extended: true}));
 app.get("/", function(req, res){
   res.render("app-welcome");
 });
+
+  // Leg 3
+app.get("/login/twitter", function(req, res){
+  var url = "https://api.twitter.com/oauth/request_token";
+  var oauth = {
+    callback:        process.env.t_callback_url,
+    consumer_key:    process.env.t_consumer_key,
+    consumer_secret: process.env.t_consumer_secret
+  }
+  // Leg 1
+  request.post({url: url, oauth: oauth}, function(e, response){
+    var auth_data = qstring.parse(response.body);
+    var post_data = qstring.stringify({oauth_token: auth_data.oauth_token});
+    req.session.t_oauth_token = auth_data.oauth_token;
+    req.session.t_oauth_token_secret = auth_data.oauth_token_secret;
+  // Leg 2
+    res.redirect("https://api.twitter.com/oauth/authenticate?" + post_data)
+  });
+});
+
+app.get("/login/twitter/callback", function(req, res){
+  var url = "https://api.twitter.com/oauth/access_token";
+  var auth_data = qstring.parse(req.query);
+  var oauth = {
+    consumer_key: process.env.t_consumer_key,
+    consumer_secret: process.env.t_consumer_secret,
+    token: req.session.t_oauth_token,
+    token_secret: req.session.t_oauth_token_secret,
+    verifier: auth_data.oauth_verifier
+  }
+  request.post({url: url, oauth: oauth}, function(e, response){
+    var auth_data = qstring.parse(response.body);
+    req.session.t_oauth_token = auth_data.oauth_token;
+    req.session.t_oauth_token_secret = auth_data.oauth_token_secret;
+    req.session.t_user_id = auth_data.user_id;
+    req.session.t_screen_name = auth_data.screen_name;
+  })
+})
 
 app.get("/candidates", function(req, res){
   Candidate.find({}).then(function(candidates){

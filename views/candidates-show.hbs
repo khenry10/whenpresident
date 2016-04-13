@@ -1,5 +1,15 @@
 {{#if candidate}}
 <h2>{{candidate.name}} for President in {{candidate.year}}!</h2>
+<form action="/candidates/{{candidate.name}}" method="POST">
+  <input type="text" name="candidate[name]" placeholder="{{candidate.name}}" />
+  <input type="number" name="candidate[year]" placeholder="{{candidate.year}}" />
+  <button type="Submit">Update</button>
+</form>
+
+<form action="/candidates/{{candidate.name}}" method="destroy">
+  <button type="Submit">Destroy</button>
+</form>
+
 {{else}}
 <h2>That candidate couldn't be found!</h2>
 {{/if}}
